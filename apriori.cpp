@@ -10,14 +10,15 @@
 using namespace std;
 
 const int MIN_SUPPORT = 2;
-const float MIN_CONFIDENCE = 1.5;
+const float MIN_CONFIDENCE = 1.;
 
 vector< vector<string> > read_file(char file_name[]);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,int> &temp_dictionary, int k, int item_idx, string itemset, int current);
 void prune_itemsets(map<string,int> &temp_dictionary, vector<string> &candidates, int min_support);
 void update_candidates(vector<string> &candidates, string itemset);
-void combinations(int offset, int k, vector<string> &comb, vector<string> &items);
-
+void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
+void generate_association_rules(map<string,int> dictionary, float min_confidence);
+string create_consequent(string antecedent, vector<string> items);
 
 // ------------------------------------------------------------
 // Main
@@ -65,31 +66,14 @@ int main (){
         n++;
     }while(!temp_dictionary.empty());
 
-    cout<<"KEY\tVALUE\n";
-    for (map<string, int>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
-        cout << itr->first << '\t' << itr->second << '\n';
-    }
-
-    
-    // stringstream ss;
-    // vector<string> items;
-    // vector<string> comb;
-    // string item;
-
+    // cout<<"KEY\tVALUE\n";
     // for (map<string, int>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
-    //     if(!(itr->first.find(' ') != string::npos)) continue; // if itemset has just 1 element continue
-    //     cout<<"-------\n"<<itr->first<<endl;
-    //     ss << itr->first;
-    //     while(getline (ss, item, ' ')) {
-    //         items.push_back(item);
-    //     }
-    //     for (int idx = items.size()-1; idx>0; idx--){
-    //         combinations(0, idx, comb, items);
-    //     }
-        
-    //     ss.clear();
-    //     items.clear();
+    //     cout << itr->first << '\t' << itr->second << '\n';
     // }
+
+    // print out all association rules with confidence >= min_confidence
+    generate_association_rules(dictionary, MIN_CONFIDENCE);
+
 
     return 0;
 }
@@ -173,17 +157,91 @@ void update_candidates(vector<string> &candidates, string itemset){
     }
 }
 
-
-void combinations(int offset, int k, vector<string> &comb, vector<string> &items) {
-  if (k == 0){
-        cout << "[ ";
-        for (int i = 0; i < comb.size(); ++i) { cout << comb[i] << " "; }
-        cout << "] " << endl;
+// https://stackoverflow.com/questions/12991758/creating-all-possible-k-combinations-of-n-items-in-c/28698654
+void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations) {
+    if (k == 0){
+        string temp;
+        for (int i = 0; i < elements.size(); ++i){
+            temp += " " + elements[i];
+        }
+        temp.erase(0,1); // remove first space
+        combinations.push_back(temp);
         return;
-  }
-  for (int i = offset; i <= items.size() - k; ++i) {
-    comb.push_back(items[i]);
-    combinations(i+1, k-1, comb, items);
-    comb.pop_back();
-  }
+    }
+    for (int i = offset; i <= items.size() - k; ++i) {
+        elements.push_back(items[i]);
+        compute_combinations(i+1, k-1, elements, items, combinations);
+        elements.pop_back();
+    }
+}
+
+void generate_association_rules(map<string,int> dictionary, float min_confidence){
+    stringstream ss;
+    vector<string> items;
+    vector<string> elements;
+    vector<string> combinations;
+    string item;
+    string antecedent;
+    string consequent;
+    float conf;
+
+    vector<string>::iterator it_items;
+    
+    // iterate through all frequent itemsets
+    for (map<string, int>::iterator i = dictionary.begin(); i != dictionary.end(); ++i) {
+        if(!(i->first.find(' ') != string::npos)) continue; // if itemset has just 1 element continue
+
+        cout<<"---------------"<<endl;
+        cout<<"\e[1m"<<i->first<<"\e[0m"<<endl;
+        cout<<"---------------"<<endl;
+
+        // insert all items of the itemset into a vector
+        ss << i->first;
+        while(getline (ss, item, ' ')) {
+            items.push_back(item);
+        }
+
+        // compute all combinations (which will be the antecedents) of size from k-1 to 1 among items of the itemsets
+        for (int idx = items.size()-1; idx>0; idx--){
+            compute_combinations(0, idx, elements, items, combinations);
+        }
+
+        for (vector<string>::iterator itr = combinations.begin(); itr != combinations.end(); ++itr){
+            antecedent = *itr;
+            consequent = create_consequent(antecedent, items);
+
+            conf = float(dictionary[i->first])/float(dictionary[antecedent]);
+            if(conf >= min_confidence){
+                cout<<antecedent<<" -> "<<consequent<<" : "<<conf<<endl;
+            }
+        }
+
+        ss.clear();
+        items.clear();
+        combinations.clear();
+    }
+}
+
+string create_consequent(string antecedent, vector<string> items){
+    stringstream ss;
+    string item;
+    string consequent;
+    vector<string>::iterator itr;
+
+    ss << antecedent;
+
+    while(getline (ss, item, ' ')) {
+        itr = find(items.begin(), items.end(), item);
+
+        if(itr != items.end()){
+            items.erase(itr);
+        }
+    }
+    
+    for (itr = items.begin(); itr != items.end(); ++itr){
+        consequent += " " + *itr;
+    }
+    consequent.erase(0,1);
+
+    return consequent;
 }
