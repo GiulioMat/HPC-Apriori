@@ -10,11 +10,13 @@
 using namespace std;
 
 const int MIN_SUPPORT = 2;
+const float MIN_CONFIDENCE = 1.5;
 
 vector< vector<string> > read_file(char file_name[]);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,int> &temp_dictionary, int k, int item_idx, string itemset, int current);
 void prune_itemsets(map<string,int> &temp_dictionary, vector<string> &candidates, int min_support);
 void update_candidates(vector<string> &candidates, string itemset);
+void combinations(int offset, int k, vector<string> &comb, vector<string> &items);
 
 
 // ------------------------------------------------------------
@@ -48,21 +50,46 @@ int main (){
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
     prune_itemsets(dictionary, candidates, MIN_SUPPORT);
 
-    // read matrix and insert 2-itemsets in temp_dictionary as key with their support as value
-    for (int i = 0; i < matrix.size(); i++){
-        find_itemsets(matrix[i], candidates, temp_dictionary, 2, -1, "", 0);
-    }
-
-    // prune from dictionary 2-itemsets with support < min_support and insert items in candidates vector
-    prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
-
-    // append new 2-itemsets to main dictionary
-    dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
+    // insert in dictionary all k-itemset
+    int n = 2; // starting from 2-itemset
+    do{
+        temp_dictionary.clear();
+        // read matrix and insert n-itemsets in temp_dictionary as key with their support as value
+        for (int i = 0; i < matrix.size(); i++){
+            find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0);
+        }
+        // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
+        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
+        // append new n-itemsets to main dictionary
+        dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
+        n++;
+    }while(!temp_dictionary.empty());
 
     cout<<"KEY\tVALUE\n";
     for (map<string, int>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
         cout << itr->first << '\t' << itr->second << '\n';
     }
+
+    
+    // stringstream ss;
+    // vector<string> items;
+    // vector<string> comb;
+    // string item;
+
+    // for (map<string, int>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
+    //     if(!(itr->first.find(' ') != string::npos)) continue; // if itemset has just 1 element continue
+    //     cout<<"-------\n"<<itr->first<<endl;
+    //     ss << itr->first;
+    //     while(getline (ss, item, ' ')) {
+    //         items.push_back(item);
+    //     }
+    //     for (int idx = items.size()-1; idx>0; idx--){
+    //         combinations(0, idx, comb, items);
+    //     }
+        
+    //     ss.clear();
+    //     items.clear();
+    // }
 
     return 0;
 }
@@ -144,4 +171,19 @@ void update_candidates(vector<string> &candidates, string itemset){
             candidates.push_back(item);
         }
     }
+}
+
+
+void combinations(int offset, int k, vector<string> &comb, vector<string> &items) {
+  if (k == 0){
+        cout << "[ ";
+        for (int i = 0; i < comb.size(); ++i) { cout << comb[i] << " "; }
+        cout << "] " << endl;
+        return;
+  }
+  for (int i = offset; i <= items.size() - k; ++i) {
+    comb.push_back(items[i]);
+    combinations(i+1, k-1, comb, items);
+    comb.pop_back();
+  }
 }
