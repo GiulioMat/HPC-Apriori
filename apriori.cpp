@@ -9,15 +9,15 @@
 #include <algorithm>
 using namespace std;
 
-const int MIN_SUPPORT = 2;
+const float MIN_SUPPORT = 0.5;
 const float MIN_CONFIDENCE = 1.;
 
 vector< vector<string> > read_file(char file_name[]);
-void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,int> &temp_dictionary, int k, int item_idx, string itemset, int current);
-void prune_itemsets(map<string,int> &temp_dictionary, vector<string> &candidates, int min_support);
+void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current);
+void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
 void update_candidates(vector<string> &candidates, string itemset);
 void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
-void generate_association_rules(map<string,int> dictionary, float min_confidence);
+void generate_association_rules(map<string,float> dictionary, float min_confidence);
 string create_consequent(string antecedent, vector<string> items);
 
 // ------------------------------------------------------------
@@ -27,14 +27,16 @@ string create_consequent(string antecedent, vector<string> items);
 int main (){
     char file_name[] = "./prova.txt";
     vector< vector<string> > matrix;
-    map<string,int> dictionary;
-    map<string,int> temp_dictionary;
+    map<string,float> dictionary;
+    map<string,float> temp_dictionary;
     vector<string> candidates;
+    int n_rows;
 
     // read file into 2D vector matrix
     matrix = read_file(file_name);
+    n_rows = matrix.size();
 
-    // read matrix and insert 1-itemsets in dictionary as key with their support as value
+    // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
     for (int i = 0; i < matrix.size(); i++){
         for (int j = 0; j < matrix[i].size(); j++){
             string item = matrix[i][j];
@@ -43,9 +45,14 @@ int main (){
                 dictionary[item]++;
             }
             else{
-                dictionary.insert(pair<string,int>(item, 1));
+                dictionary.insert(pair<string,float>(item, 1));
             }
         }
+    }
+
+    // divide frequency by number of rows to calculate support
+    for (map<string, float>::iterator i = dictionary.begin(); i != dictionary.end(); ++i) {
+        i->second = i->second/float(n_rows);
     }
 
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
@@ -55,9 +62,13 @@ int main (){
     int n = 2; // starting from 2-itemset
     do{
         temp_dictionary.clear();
-        // read matrix and insert n-itemsets in temp_dictionary as key with their support as value
+        // read matrix and insert n-itemsets in temp_dictionary as key with their frequency as value
         for (int i = 0; i < matrix.size(); i++){
             find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0);
+        }
+        // divide frequency by number of rows to calculate support
+        for (map<string, float>::iterator i = temp_dictionary.begin(); i != temp_dictionary.end(); ++i) {
+            i->second = i->second/float(n_rows);
         }
         // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
         prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
@@ -67,7 +78,7 @@ int main (){
     }while(!temp_dictionary.empty());
 
     // cout<<"KEY\tVALUE\n";
-    // for (map<string, int>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
+    // for (map<string, float>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
     //     cout << itr->first << '\t' << itr->second << '\n';
     // }
 
@@ -111,14 +122,14 @@ vector< vector<string> > read_file(char file_name[]){
     return matrix;
 }
 
-void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,int> &temp_dictionary, int k, int item_idx, string itemset, int current){
+void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current){
     if(current == k){
         itemset = itemset.erase(0,1); // remove first space
         if(temp_dictionary.count(itemset)){ // if key exists
                 temp_dictionary[itemset]++;
         }
         else{
-            temp_dictionary.insert(pair<string,int>(itemset, 1));
+            temp_dictionary.insert(pair<string,float>(itemset, 1));
         }
         return;
     }
@@ -133,9 +144,9 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
     }
 }
 
-void prune_itemsets(map<string,int> &temp_dictionary, vector<string> &candidates, int min_support){
+void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support){
     candidates.clear(); // empty candidates to then update it
-    for (map<string, int>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){
+    for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){
         if (it->second < MIN_SUPPORT){
             temp_dictionary.erase(it++);
         }
@@ -175,7 +186,7 @@ void compute_combinations(int offset, int k, vector<string> &elements, vector<st
     }
 }
 
-void generate_association_rules(map<string,int> dictionary, float min_confidence){
+void generate_association_rules(map<string,float> dictionary, float min_confidence){
     stringstream ss;
     vector<string> items;
     vector<string> elements;
@@ -188,7 +199,7 @@ void generate_association_rules(map<string,int> dictionary, float min_confidence
     vector<string>::iterator it_items;
     
     // iterate through all frequent itemsets
-    for (map<string, int>::iterator i = dictionary.begin(); i != dictionary.end(); ++i) {
+    for (map<string, float>::iterator i = dictionary.begin(); i != dictionary.end(); ++i) {
         if(!(i->first.find(' ') != string::npos)) continue; // if itemset has just 1 element continue
 
         cout<<"---------------"<<endl;
