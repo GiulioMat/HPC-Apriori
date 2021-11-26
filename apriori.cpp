@@ -15,7 +15,7 @@ const float MIN_CONFIDENCE = 1.;
 vector< vector<string> > read_file(char file_name[]);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
-void update_candidates(vector<string> &candidates, string itemset);
+void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items);
 void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
 void generate_association_rules(map<string,float> dictionary, float min_confidence);
 string create_consequent(string antecedent, vector<string> items);
@@ -85,7 +85,6 @@ int main (){
     // print out all association rules with confidence >= min_confidence
     generate_association_rules(dictionary, MIN_CONFIDENCE);
 
-
     return 0;
 }
 
@@ -125,45 +124,81 @@ vector< vector<string> > read_file(char file_name[]){
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current){
     if(current == k){
         itemset = itemset.erase(0,1); // remove first space
-        if(temp_dictionary.count(itemset)){ // if key exists
+
+        // if itemset is a candidate insert it into temp_dictionary to calculate support 
+        if(find(candidates.begin(), candidates.end(), itemset) != candidates.end()){
+            if(temp_dictionary.count(itemset)){ // if key exists
                 temp_dictionary[itemset]++;
+            }
+            else{
+                temp_dictionary.insert(pair<string,float>(itemset, 1));
+            }
+            return;
         }
+        // if itemset is not a candidate discard it
         else{
-            temp_dictionary.insert(pair<string,float>(itemset, 1));
-        }
-        return;
+            return;
+        } 
     }
     
     string item;
     for (int j = ++item_idx; j < matrix.size(); j++){
         item = matrix[j];
 
-        if(find(candidates.begin(), candidates.end(), item) != candidates.end()){
-            find_itemsets(matrix, candidates, temp_dictionary, k, j, itemset + " " + item, current+1);
-        }
+        find_itemsets(matrix, candidates, temp_dictionary, k, j, itemset + " " + item, current+1);
     }
 }
 
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support){
+    vector<string> temp_candidate_items;
     candidates.clear(); // empty candidates to then update it
-    for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){
+    for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){ // like a while
         if (it->second < MIN_SUPPORT){
             temp_dictionary.erase(it++);
         }
         else{
-            update_candidates(candidates, it->first);
+            temp_candidate_items.push_back(it->first);
             ++it;
+        }
+        if(it == temp_dictionary.end()){
+            update_candidates(candidates, temp_candidate_items);
         }
     }
 }
 
-void update_candidates(vector<string> &candidates, string itemset){
-    stringstream ss;
+void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){
     string item;
-    ss << itemset;
-    while(getline (ss, item, ' ')) {
-        if(!(find(candidates.begin(), candidates.end(), item) != candidates.end())){
-            candidates.push_back(item);
+    stringstream to_combine;
+    vector<string> items;
+    vector<string> elements;
+
+    int common_items;
+
+    for(int i = 0; i < temp_candidate_items.size()-1; i++){
+        for(int j = i+1; j < temp_candidate_items.size(); j++){
+            common_items = 0;
+            items.clear();
+            to_combine.clear();
+
+            to_combine << temp_candidate_items[i] + ' ' + temp_candidate_items[j];
+            while(getline (to_combine, item, ' ')) {
+                if(!(find(items.begin(), items.end(), item) != items.end())){
+                    items.push_back(item);
+                }
+                else{
+                    common_items++;
+                }
+            }
+
+            // if the statement is true than we can create combinations as candidates
+            // else we created all correct combianations and we pass to the next itemset 
+            if(common_items == items.size()-2){
+                compute_combinations(0, items.size(), elements, items, candidates);
+            }
+            else{
+                break;
+            }
+            
         }
     }
 }
