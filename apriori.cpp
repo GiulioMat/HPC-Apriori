@@ -34,9 +34,11 @@ int main (){
     int n_rows;
 
     // read file into 2D vector matrix
+    cout<<"Loading data"<<endl;
     matrix = read_file(file_name);
     n_rows = matrix.size();
 
+    cout<<"Starting apriori"<<endl;
     struct timeval start, end;
     gettimeofday(&start, NULL);
 
@@ -64,7 +66,7 @@ int main (){
 
     // insert in dictionary all k-itemset
     int n = 2; // starting from 2-itemset
-    do{
+    while(!candidates.empty()){
         temp_dictionary.clear();
         // read matrix and insert n-itemsets in temp_dictionary as key with their frequency as value
         for (int i = 0; i < matrix.size(); i++){
@@ -79,7 +81,7 @@ int main (){
         // append new n-itemsets to main dictionary
         dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
         n++;
-    }while(!temp_dictionary.empty());
+    }
 
     gettimeofday(&end, NULL);
 
