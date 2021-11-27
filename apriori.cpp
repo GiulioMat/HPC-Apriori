@@ -7,6 +7,7 @@
 #include <sstream>
 #include <map>
 #include <algorithm>
+#include <sys/time.h>
 using namespace std;
 
 const float MIN_SUPPORT = 0.5;
@@ -35,6 +36,9 @@ int main (){
     // read file into 2D vector matrix
     matrix = read_file(file_name);
     n_rows = matrix.size();
+
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
 
     // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
     for (int i = 0; i < matrix.size(); i++){
@@ -77,13 +81,19 @@ int main (){
         n++;
     }while(!temp_dictionary.empty());
 
-    // cout<<"KEY\tVALUE\n";
-    // for (map<string, float>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
-    //     cout << itr->first << '\t' << itr->second << '\n';
-    // }
+    gettimeofday(&end, NULL);
+
+    double elapsed = (end.tv_sec - start.tv_sec) + 
+              ((end.tv_usec - start.tv_usec)/1000000.0);
+    cout<<"Time passed: "<<elapsed<<endl;
+
+    cout<<"KEY\tVALUE\n";
+    for (map<string, float>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
+        cout << itr->first << '\t' << itr->second << '\n';
+    }
 
     // print out all association rules with confidence >= min_confidence
-    generate_association_rules(dictionary, MIN_CONFIDENCE);
+    // generate_association_rules(dictionary, MIN_CONFIDENCE);
 
     return 0;
 }
@@ -161,7 +171,9 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
             ++it;
         }
         if(it == temp_dictionary.end()){
-            update_candidates(candidates, temp_candidate_items);
+            if(!temp_dictionary.empty()){
+                update_candidates(candidates, temp_candidate_items);
+            }
         }
     }
 }
