@@ -14,7 +14,8 @@ const float MIN_SUPPORT = 0.5;
 const float MIN_CONFIDENCE = 1.;
 
 vector< vector<string> > read_file(char file_name[]);
-void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current);
+void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
+void split_candidates(vector<string> candidates, vector<string> &single_candidates);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items);
 void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
@@ -31,6 +32,7 @@ int main (){
     map<string,float> dictionary;
     map<string,float> temp_dictionary;
     vector<string> candidates;
+    vector<string> single_candidates;
     int n_rows;
 
     // read file into 2D vector matrix
@@ -68,9 +70,11 @@ int main (){
     int n = 2; // starting from 2-itemset
     while(!candidates.empty()){
         temp_dictionary.clear();
+        // insert single items candidates
+        split_candidates(candidates, single_candidates);
         // read matrix and insert n-itemsets in temp_dictionary as key with their frequency as value
         for (int i = 0; i < matrix.size(); i++){
-            find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0);
+            find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0, single_candidates);
         }
         // divide frequency by number of rows to calculate support
         for (map<string, float>::iterator i = temp_dictionary.begin(); i != temp_dictionary.end(); ++i) {
@@ -133,7 +137,7 @@ vector< vector<string> > read_file(char file_name[]){
     return matrix;
 }
 
-void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current){
+void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates){
     if(current == k){
         itemset = itemset.erase(0,1); // remove first space
 
@@ -157,7 +161,12 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
     for (int j = ++item_idx; j < matrix.size(); j++){
         item = matrix[j];
 
-        find_itemsets(matrix, candidates, temp_dictionary, k, j, itemset + " " + item, current+1);
+        // if item does not compose one of the candidates, skip it
+        if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
+            continue;
+        }
+
+        find_itemsets(matrix, candidates, temp_dictionary, k, j, itemset + " " + item, current+1, single_candidates);
     }
 }
 
@@ -178,6 +187,21 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
             }
         }
     }
+}
+
+void split_candidates(vector<string> candidates, vector<string> &single_candidates){
+    stringstream ss;
+    string item;
+
+    for(int i = 0; i < candidates.size(); i++){
+            ss << candidates[i];
+            while(getline (ss, item, ' ')) {
+                if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
+                    single_candidates.push_back(item);
+                }
+            }
+            ss.clear();
+        }
 }
 
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){
