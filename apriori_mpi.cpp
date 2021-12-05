@@ -2,7 +2,7 @@
 
 #include <iostream>
 #include <fstream>
-#include <string>
+#include <string.h>
 #include <vector>
 #include <sstream>
 #include <map>
@@ -15,10 +15,11 @@ const float MIN_CONFIDENCE = 1.;
 
 int count_file_lines(char file_name[]);
 void compute_local_start_end(char file_name[], int my_rank, int comm_sz, int *local_start, int *local_end);
-vector< vector<string> > read_file(char file_name[]);
+vector< vector<string> > read_file(char file_name[], int local_start, int local_end);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
 void split_candidates(vector<string> candidates, vector<string> &single_candidates);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
+void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, int my_rank, int comm_sz);
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items);
 void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
 void generate_association_rules(map<string,float> dictionary, float min_confidence);
@@ -44,24 +45,20 @@ int main (){
     map<string,float> temp_dictionary;
     vector<string> candidates;
     vector<string> single_candidates;
-    int n_rows;
     int local_start = 0, local_end = 0;
     string item;
+
+    int tot_lines = count_file_lines(file_name);
 
     compute_local_start_end(file_name, my_rank, comm_sz, &local_start, &local_end);
 
     cout<<"RANK("<<my_rank<<") "<<"start: "<<local_start<<" | end:"<<local_end<<endl; 
 
-    if(my_rank == 0){
-
     // read file into 2D vector matrix
     cout<<"Loading data"<<endl;
-    matrix = read_file(file_name);
-    n_rows = matrix.size();
+    matrix = read_file(file_name, local_start, local_end);
 
     cout<<"Starting apriori"<<endl;
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
 
     // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
     for (int i = 0; i < matrix.size(); i++){
@@ -79,19 +76,13 @@ int main (){
 
     cout<<"Finished looking for 1-itemsets"<<endl;
 
-    gettimeofday(&end, NULL);
-
-    double elapsed = (end.tv_sec - start.tv_sec) + 
-              ((end.tv_usec - start.tv_usec)/1000000.0);
-    cout<<"Time passed: "<<elapsed<<endl;
-
     // divide frequency by number of rows to calculate support
     for (map<string, float>::iterator i = dictionary.begin(); i != dictionary.end(); ++i) {
-        i->second = i->second/float(n_rows);
+        i->second = i->second/float(tot_lines);
     }
 
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
-    prune_itemsets(dictionary, candidates, MIN_SUPPORT);
+    prune_itemsets_MPI(dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz);
 
     // insert in dictionary all k-itemset
     int n = 2; // starting from 2-itemset
@@ -105,29 +96,26 @@ int main (){
         }
         // divide frequency by number of rows to calculate support
         for (map<string, float>::iterator i = temp_dictionary.begin(); i != temp_dictionary.end(); ++i) {
-            i->second = i->second/float(n_rows);
+            i->second = i->second/float(tot_lines);
         }
         // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
-        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
+        prune_itemsets_MPI(temp_dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz);
         // append new n-itemsets to main dictionary
-        dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
+        if(my_rank == 0){
+            dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
+        }
         n++;
     }
 
-    gettimeofday(&end, NULL);
-
-    elapsed = (end.tv_sec - start.tv_sec) + 
-              ((end.tv_usec - start.tv_usec)/1000000.0);
-    cout<<"Time passed: "<<elapsed<<endl;
-
-    cout<<"KEY\tVALUE\n";
-    for (map<string, float>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
-        cout << itr->first << '\t' << itr->second << '\n';
+    if(my_rank == 0){
+        cout<<"KEY\tVALUE\n";
+        for (map<string, float>::iterator itr = dictionary.begin(); itr != dictionary.end(); ++itr) {
+            cout << itr->first << '\t' << itr->second << '\n';
+        }
     }
 
     // print out all association rules with confidence >= min_confidence
     // generate_association_rules(dictionary, MIN_CONFIDENCE);
-    }
 
     MPI_Finalize();
     return 0;
@@ -183,7 +171,8 @@ void compute_local_start_end(char file_name[], int my_rank, int comm_sz, int *lo
     }
 }
 
-vector< vector<string> > read_file(char file_name[]){
+vector< vector<string> > read_file(char file_name[], int local_start, int local_end){
+    int line_index = 0;
     ifstream myfile (file_name);
 
     vector< vector<string> > matrix;
@@ -194,17 +183,23 @@ vector< vector<string> > read_file(char file_name[]){
     string item;
 
     while(getline (myfile, line)){
-        ss << line;
+        if(line_index >= local_start & line_index < local_end){
+            ss << line;
 
-        while(getline (ss, item, ' ')) {
-            row.push_back(item);
+            while(getline (ss, item, ' ')) {
+                item.erase(remove(item.begin(), item.end(), '\r'), item.end());
+                row.push_back(item);
+            }
+
+            sort(row.begin(), row.end());
+            matrix.push_back(row);
+
+            ss.clear();
+            row.clear();
         }
 
-        sort(row.begin(), row.end());
-        matrix.push_back(row);
-
-        ss.clear();
-        row.clear();
+        if(line_index >= local_end) break;
+        line_index++;
     }
 
     myfile.close();
@@ -260,6 +255,81 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
             if(!temp_dictionary.empty()){
                 update_candidates(candidates, temp_candidate_items);
             }
+        }
+    }
+}
+
+// https://stackoverflow.com/questions/21378302/how-to-send-stdstring-in-mpi/50171749
+void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, int my_rank, int comm_sz){
+    string itemset;
+    int len;
+    int count;
+    float support;
+
+    if(my_rank != 0){
+        len = temp_dictionary.size();
+        MPI_Send(&len, 1 , MPI_INT, 0, 0, MPI_COMM_WORLD);
+
+        for (map<string, float>::iterator i = temp_dictionary.begin(); i != temp_dictionary.end(); ++i) {
+            MPI_Send(&i->first[0], i->first.size()+1, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
+            MPI_Send(&i->second, 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+        }
+    }
+    else{
+        for(int i=1; i<comm_sz; i++){
+            MPI_Recv(&len, 1 , MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+            for(int j=0; j<len; j++){
+                MPI_Status status;
+                MPI_Probe(i, 0, MPI_COMM_WORLD, &status);
+                MPI_Get_count(&status, MPI_CHAR, &count);
+                char buf[count];
+                MPI_Recv(&buf, count, MPI_CHAR, i, 0, MPI_COMM_WORLD, &status);
+                itemset = buf; 
+                
+                MPI_Recv(&support, 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                
+                // cout<<i<<" "<<itemset<<": "<<support<<endl;
+                if(temp_dictionary.count(itemset)){ // if key exists
+                    temp_dictionary[itemset] += support;
+                }
+                else{
+                    temp_dictionary.insert(pair<string,float>(itemset, support));
+                }
+            }
+        }
+
+        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
+    }
+
+    // broadcast updated candidate itemsets
+    char* buf;
+
+    if(my_rank == 0){
+        len = candidates.size();
+    }
+    else{
+        candidates.clear();
+    }
+    MPI_Bcast(&len, 1 , MPI_INT, 0, MPI_COMM_WORLD); // broadcast length of candidates vector
+
+    for(int i=0; i<len; i++) {
+        if(my_rank == 0){
+            itemset = candidates[i];
+            count = itemset.length()+1;
+            buf = (char*)malloc(sizeof(char)*count);
+            strcpy(buf, itemset.c_str());
+        }
+        MPI_Bcast(&count, 1, MPI_INT, 0, MPI_COMM_WORLD); // broadcast length of itemset
+        if(my_rank != 0){
+            buf = (char*)malloc(sizeof(char)*count);
+        }
+
+        MPI_Bcast(&buf[0], count, MPI_CHAR, 0, MPI_COMM_WORLD); // broadcast itemset
+
+        if(my_rank != 0){
+            itemset = buf;
+            candidates.push_back(buf);
         }
     }
 }
