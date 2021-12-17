@@ -351,14 +351,14 @@ void split_candidates(vector<string> candidates, vector<string> &single_candidat
     string item;
 
     for(int i = 0; i < candidates.size(); i++){
-            ss << candidates[i];
-            while(getline (ss, item, ' ')) {
-                if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
-                    single_candidates.push_back(item);
-                }
+        ss << candidates[i];
+        while(getline (ss, item, ' ')) {
+            if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
+                single_candidates.push_back(item);
             }
-            ss.clear();
         }
+        ss.clear();
+    }
 }
 
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){

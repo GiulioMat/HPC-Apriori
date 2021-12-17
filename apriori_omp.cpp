@@ -199,15 +199,15 @@ void split_candidates(vector<string> candidates, vector<string> &single_candidat
     
     #pragma omp parallel for
     for(int i = 0; i < candidates.size(); i++){
-            stringstream ss(candidates[i]);
-            string item;
-            while(getline (ss, item, ' ')) {
-                if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
-                    #pragma omp critical
-                    single_candidates.push_back(item);
-                }
+        stringstream ss(candidates[i]);
+        string item;
+        while(getline (ss, item, ' ')) {
+            if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
+                #pragma omp critical
+                single_candidates.push_back(item);
             }
         }
+    }
 }
 
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){

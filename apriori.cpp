@@ -10,7 +10,7 @@
 #include <sys/time.h>
 using namespace std;
 
-const float MIN_SUPPORT = 0.5;
+const float MIN_SUPPORT = 0.3;
 const float MIN_CONFIDENCE = 1.;
 
 vector< vector<string> > read_file(char file_name[]);
@@ -34,20 +34,23 @@ int main (){
     vector<string> candidates;
     vector<string> single_candidates;
     int n_rows;
+    string item;
 
     // read file into 2D vector matrix
-    cout<<"Loading data"<<endl;
     matrix = read_file(file_name);
     n_rows = matrix.size();
 
-    cout<<"Starting apriori"<<endl;
+    if(matrix.size() == 0){
+        return 0;
+    }
+
     struct timeval start, end;
     gettimeofday(&start, NULL);
 
     // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
     for (int i = 0; i < matrix.size(); i++){
         for (int j = 0; j < matrix[i].size(); j++){
-            string item = matrix[i][j];
+            item = matrix[i][j];
 
             if(dictionary.count(item)){ // if key exists
                 dictionary[item]++;
@@ -113,6 +116,11 @@ vector< vector<string> > read_file(char file_name[]){
 
     vector< vector<string> > matrix;
     vector<string> row;  
+
+    if(!myfile.good()){
+        cout<<"Input file has a problem (could be mispelled)"<<endl;
+        return matrix;
+    }
     
     string line;
     stringstream ss;
