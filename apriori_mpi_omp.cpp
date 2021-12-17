@@ -347,8 +347,6 @@ void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &cand
 }
 
 void split_candidates(vector<string> candidates, vector<string> &single_candidates){
-    stringstream ss;
-    string item;
 
     #pragma omp parallel for
     for(int i = 0; i < candidates.size(); i++){
