@@ -39,7 +39,6 @@ int main (){
     int my_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-
     char file_name[] = "./order_products__prior.txt";
     vector< vector<string> > matrix;
     map<string,float> dictionary;
@@ -62,22 +61,16 @@ int main (){
     matrix = read_file(file_name, local_start, local_end);
 
     // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
-    #pragma omp parallel for shared(dictionary) private(matrix, item)
     for (int i = 0; i < matrix.size(); i++){
         for (int j = 0; j < matrix[i].size(); j++){
             item = matrix[i][j];
 
-            if(dictionary.count(item)){ // if key exists
-                dictionary[item]++;
-            }
-            else{
-                dictionary.insert(pair<string,float>(item, 1));
-            }
+            dictionary[item]++;
         }
     }
 
     // divide frequency by number of rows to calculate support
-    #pragma omp parallel for shared(dictionary) private(tot_lines)
+    #pragma omp parallel for
     for (int i=0; i<dictionary.size(); i++) {
         map<string, float>::iterator itr = dictionary.begin();
         advance(itr, i);
@@ -94,12 +87,12 @@ int main (){
         // insert single items candidates
         split_candidates(candidates, single_candidates);
         // read matrix and insert n-itemsets in temp_dictionary as key with their frequency as value
-        #pragma omp parallel for shared(temp_dictionary) private(matrix, candidates, n, single_candidates)
+        #pragma omp parallel for
         for (int i = 0; i < matrix.size(); i++){
             find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0, single_candidates);
         }
         // divide frequency by number of rows to calculate support
-        #pragma omp parallel for shared(temp_dictionary) private(tot_lines)
+        #pragma omp parallel for
         for (int i=0; i<temp_dictionary.size(); i++) {
             map<string, float>::iterator itr = temp_dictionary.begin();
             advance(itr, i);
@@ -109,12 +102,7 @@ int main (){
         prune_itemsets_MPI(temp_dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz);
         // append new n-itemsets to main dictionary
         if(my_rank == 0){
-            #pragma omp parallel for shared(dictionary) private(temp_dictionary)
-            for (int i=0; i<temp_dictionary.size(); i++) {
-                map<string, float>::iterator itr = temp_dictionary.begin();
-                advance(itr, i);
-                dictionary.insert(pair<string,float>(itr->first, itr->second));
-            }
+            dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
         }
         n++;
     }
@@ -230,12 +218,9 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
 
         // if itemset is a candidate insert it into temp_dictionary to calculate support 
         if(find(candidates.begin(), candidates.end(), itemset) != candidates.end()){
-            if(temp_dictionary.count(itemset)){ // if key exists
-                temp_dictionary[itemset]++;
-            }
-            else{
-                temp_dictionary.insert(pair<string,float>(itemset, 1));
-            }
+            #pragma omp critical
+            temp_dictionary[itemset]++;
+            
             return;
         }
         // if itemset is not a candidate discard it
@@ -260,28 +245,19 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support){
     vector<string> temp_candidate_items;
     candidates.clear(); // empty candidates to then update it
-    vector<string> to_erase;
-
-    #pragma omp parallel for shared(temp_dictionary, to_erase) private(MIN_SUPPORT)
-    for (int i=0; i<temp_dictionary.size(); i++) {
-        map<string, float>::iterator itr = temp_dictionary.begin();
-        advance(itr, i);
-
-        if (itr->second < MIN_SUPPORT){
-            to_erase.push_back(itr->first);
+    for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){ // like a while
+        if (it->second < MIN_SUPPORT){
+            temp_dictionary.erase(it++);
         }
         else{
-            temp_candidate_items.push_back(itr->first);
+            temp_candidate_items.push_back(it->first);
+            ++it;
         }
-    }
-
-    #pragma omp parallel for shared(temp_dictionary) private(to_erase)
-    for(int i=0; i<to_erase.size(); i++){
-        temp_dictionary.erase(to_erase[i]);
-    }
-
-    if(!temp_dictionary.empty()){
-        update_candidates(candidates, temp_candidate_items);
+        if(it == temp_dictionary.end()){
+            if(!temp_dictionary.empty()){
+                update_candidates(candidates, temp_candidate_items);
+            }
+        }
     }
 }
 
@@ -374,36 +350,35 @@ void split_candidates(vector<string> candidates, vector<string> &single_candidat
     stringstream ss;
     string item;
 
-    #pragma omp parallel for shared(single_candidates) private(ss, item, candidates)
+    #pragma omp parallel for
     for(int i = 0; i < candidates.size(); i++){
-            ss << candidates[i];
-            while(getline (ss, item, ' ')) {
-                if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
-                    single_candidates.push_back(item);
-                }
+        stringstream ss(candidates[i]);
+        string item;
+        while(getline (ss, item, ' ')) {
+            if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
+                #pragma omp critical
+                single_candidates.push_back(item);
             }
-            ss.clear();
         }
+    }
 }
 
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){
-    string item;
-    stringstream to_combine;
-    vector<string> items;
-    vector<string> elements;
 
-    int common_items;
-
-    #pragma omp parallel for shared(candidates) private(item, to_combine, items, elements, common_items)
     for(int i = 0; i < temp_candidate_items.size()-1; i++){
+
+        #pragma omp parallel for
         for(int j = i+1; j < temp_candidate_items.size(); j++){
-            common_items = 0;
-            items.clear();
-            to_combine.clear();
+            int common_items = 0;
+            string item;
+            stringstream to_combine;
+            vector<string> items;
+            vector<string> elements;
 
             to_combine << temp_candidate_items[i] + ' ' + temp_candidate_items[j];
             while(getline (to_combine, item, ' ')) {
                 if(!(find(items.begin(), items.end(), item) != items.end())){
+                    #pragma omp critical
                     items.push_back(item);
                 }
                 else{
@@ -416,10 +391,6 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
             if(common_items == items.size()-2){
                 compute_combinations(0, items.size(), elements, items, candidates);
             }
-            else{
-                break;
-            }
-            
         }
     }
 }
@@ -432,6 +403,7 @@ void compute_combinations(int offset, int k, vector<string> &elements, vector<st
             temp += " " + elements[i];
         }
         temp.erase(0,1); // remove first space
+        #pragma omp critical
         combinations.push_back(temp);
         return;
     }
