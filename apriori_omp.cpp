@@ -10,11 +10,11 @@
 #include <sys/time.h>
 using namespace std;
 
-const float MIN_SUPPORT = 0.3;
+const float MIN_SUPPORT = 0.1;
 const float MIN_CONFIDENCE = 1.;
 
 vector< vector<string> > read_file(char file_name[]);
-void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
+void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates, int n_rows);
 void split_candidates(vector<string> candidates, vector<string> &single_candidates);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items);
@@ -27,7 +27,7 @@ string create_consequent(string antecedent, vector<string> items);
 // ------------------------------------------------------------
 
 int main (){
-    char file_name[] = "./prova.txt";
+    char file_name[] = "./order_products__prior.txt";
     vector< vector<string> > matrix;
     map<string,float> dictionary;
     map<string,float> temp_dictionary;
@@ -36,13 +36,11 @@ int main (){
     int n_rows;
     string item;
 
+    cout<<"Max threads: "<<omp_get_max_threads()<<endl;
+
     // read file into 2D vector matrix
     matrix = read_file(file_name);
     n_rows = matrix.size();
-
-    if(matrix.size() == 0){
-        return 0;
-    }
 
     struct timeval start, end;
     gettimeofday(&start, NULL);
@@ -51,16 +49,8 @@ int main (){
     for (int i = 0; i < matrix.size(); i++){
         for(int j = 0; j < matrix[i].size(); ++j){
             item = matrix[i][j];
-            dictionary[item]++;
+            dictionary[item] += 1./float(n_rows);
         }
-    }
-	
-    // divide frequency by number of rows to calculate support
-    #pragma omp parallel for
-    for (int i=0; i<dictionary.size(); i++) {
-        map<string, float>::iterator itr = dictionary.begin();
-        advance(itr, i);
-        itr->second = itr->second/float(n_rows);
     }
 
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
@@ -75,14 +65,7 @@ int main (){
         // read matrix and insert n-itemsets in temp_dictionary as key with their frequency as value
         #pragma omp parallel for
         for (int i = 0; i < matrix.size(); i++){
-            find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0, single_candidates);
-        }
-        // divide frequency by number of rows to calculate support
-        #pragma omp parallel for
-        for (int i=0; i<temp_dictionary.size(); i++) {
-            map<string, float>::iterator itr = temp_dictionary.begin();
-            advance(itr, i);
-            itr->second = itr->second/float(n_rows);
+            find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0, single_candidates, n_rows);
         }
         // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
         prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
@@ -116,11 +99,6 @@ vector< vector<string> > read_file(char file_name[]){
 
     vector< vector<string> > matrix;
     vector<string> row;  
-
-    if(!myfile.good()){
-        cout<<"Input file has a problem (could be mispelled)"<<endl;
-        return matrix;
-    }
     
     string line;
     stringstream ss;
@@ -145,7 +123,7 @@ vector< vector<string> > read_file(char file_name[]){
     return matrix;
 }
 
-void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates){
+void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates, int n_rows){
     if(current == k){
         itemset = itemset.erase(0,1); // remove first space
 
@@ -153,7 +131,7 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
         if(find(candidates.begin(), candidates.end(), itemset) != candidates.end()){
 
             #pragma omp critical
-            temp_dictionary[itemset]++;
+            temp_dictionary[itemset] += 1./float(n_rows);
             return;
         }
         // if itemset is not a candidate discard it
@@ -171,7 +149,7 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
             continue;
         }
 
-        find_itemsets(matrix, candidates, temp_dictionary, k, j, itemset + " " + item, current+1, single_candidates);
+        find_itemsets(matrix, candidates, temp_dictionary, k, j, itemset + " " + item, current+1, single_candidates, n_rows);
     }
 }
 
@@ -196,11 +174,12 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
 }
 
 void split_candidates(vector<string> candidates, vector<string> &single_candidates){
+    stringstream ss;
+    string item;
     
-    #pragma omp parallel for
+    #pragma omp parallel for private(ss, item)
     for(int i = 0; i < candidates.size(); i++){
-        stringstream ss(candidates[i]);
-        string item;
+        ss << candidates[i];
         while(getline (ss, item, ' ')) {
             if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
                 #pragma omp critical
@@ -211,21 +190,22 @@ void split_candidates(vector<string> candidates, vector<string> &single_candidat
 }
 
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){
+    string item;
+    stringstream to_combine;
+    vector<string> items;
+    vector<string> elements;
+
+    int common_items;
 
     for(int i = 0; i < temp_candidate_items.size()-1; i++){
 
-        #pragma omp parallel for
+        #pragma omp parallel for private(common_items, item, to_combine, items, elements)
         for(int j = i+1; j < temp_candidate_items.size(); j++){
-            int common_items = 0;
-            string item;
-            stringstream to_combine;
-            vector<string> items;
-            vector<string> elements;
+            common_items = 0;
 
             to_combine << temp_candidate_items[i] + ' ' + temp_candidate_items[j];
             while(getline (to_combine, item, ' ')) {
                 if(!(find(items.begin(), items.end(), item) != items.end())){
-                    #pragma omp critical
                     items.push_back(item);
                 }
                 else{
