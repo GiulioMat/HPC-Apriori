@@ -14,7 +14,7 @@ const float MIN_SUPPORT = 0.1;
 const float MIN_CONFIDENCE = 1.;
 
 vector< vector<string> > read_file(char file_name[]);
-void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates, int n_rows);
+void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
 void split_candidates(vector<string> candidates, vector<string> &single_candidates);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items);
@@ -38,19 +38,28 @@ int main (){
 
     cout<<"Max threads: "<<omp_get_max_threads()<<endl;
 
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+
     // read file into 2D vector matrix
     matrix = read_file(file_name);
     n_rows = matrix.size();
-
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
 
     // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
     for (int i = 0; i < matrix.size(); i++){
         for(int j = 0; j < matrix[i].size(); ++j){
             item = matrix[i][j];
-            dictionary[item] += 1./float(n_rows);
+
+            dictionary[item]++;
         }
+    }
+
+    // divide frequency by number of rows to calculate support
+    #pragma omp parallel for
+    for (int i=0; i<dictionary.size(); i++) {
+        map<string, float>::iterator itr = dictionary.begin();
+        advance(itr, i);
+        itr->second = itr->second/float(n_rows);
     }
 
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
@@ -65,7 +74,14 @@ int main (){
         // read matrix and insert n-itemsets in temp_dictionary as key with their frequency as value
         #pragma omp parallel for
         for (int i = 0; i < matrix.size(); i++){
-            find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0, single_candidates, n_rows);
+            find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0, single_candidates);
+        }
+        // divide frequency by number of rows to calculate support
+        #pragma omp parallel for
+        for (int i=0; i<temp_dictionary.size(); i++) {
+            map<string, float>::iterator itr = temp_dictionary.begin();
+            advance(itr, i);
+            itr->second = itr->second/float(n_rows);
         }
         // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
         prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
@@ -108,6 +124,7 @@ vector< vector<string> > read_file(char file_name[]){
         ss << line;
 
         while(getline (ss, item, ' ')) {
+            item.erase(remove(item.begin(), item.end(), '\r'), item.end());
             row.push_back(item);
         }
 
@@ -123,7 +140,7 @@ vector< vector<string> > read_file(char file_name[]){
     return matrix;
 }
 
-void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates, int n_rows){
+void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates){
     if(current == k){
         itemset = itemset.erase(0,1); // remove first space
 
@@ -131,7 +148,7 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
         if(find(candidates.begin(), candidates.end(), itemset) != candidates.end()){
 
             #pragma omp critical
-            temp_dictionary[itemset] += 1./float(n_rows);
+            temp_dictionary[itemset]++;
             return;
         }
         // if itemset is not a candidate discard it
@@ -149,7 +166,7 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
             continue;
         }
 
-        find_itemsets(matrix, candidates, temp_dictionary, k, j, itemset + " " + item, current+1, single_candidates, n_rows);
+        find_itemsets(matrix, candidates, temp_dictionary, k, j, itemset + " " + item, current+1, single_candidates);
     }
 }
 

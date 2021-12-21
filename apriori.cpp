@@ -1,5 +1,3 @@
-#include <omp.h>
-
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -10,7 +8,7 @@
 #include <sys/time.h>
 using namespace std;
 
-const float MIN_SUPPORT = 0.3;
+const float MIN_SUPPORT = 0.1;
 const float MIN_CONFIDENCE = 1.;
 
 vector< vector<string> > read_file(char file_name[]);
@@ -27,7 +25,7 @@ string create_consequent(string antecedent, vector<string> items);
 // ------------------------------------------------------------
 
 int main (){
-    char file_name[] = "./prova.txt";
+    char file_name[] = "./order_products__prior.txt";
     vector< vector<string> > matrix;
     map<string,float> dictionary;
     map<string,float> temp_dictionary;
@@ -36,16 +34,12 @@ int main (){
     int n_rows;
     string item;
 
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+
     // read file into 2D vector matrix
     matrix = read_file(file_name);
     n_rows = matrix.size();
-
-    if(matrix.size() == 0){
-        return 0;
-    }
-
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
 
     // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
     for (int i = 0; i < matrix.size(); i++){
@@ -116,11 +110,6 @@ vector< vector<string> > read_file(char file_name[]){
 
     vector< vector<string> > matrix;
     vector<string> row;  
-
-    if(!myfile.good()){
-        cout<<"Input file has a problem (could be mispelled)"<<endl;
-        return matrix;
-    }
     
     string line;
     stringstream ss;
@@ -130,6 +119,7 @@ vector< vector<string> > read_file(char file_name[]){
         ss << line;
 
         while(getline (ss, item, ' ')) {
+            item.erase(remove(item.begin(), item.end(), '\r'), item.end());
             row.push_back(item);
         }
 
@@ -189,11 +179,10 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
             temp_candidate_items.push_back(it->first);
             ++it;
         }
-        if(it == temp_dictionary.end()){
-            if(!temp_dictionary.empty()){
-                update_candidates(candidates, temp_candidate_items);
-            }
-        }
+    }
+
+    if(!temp_dictionary.empty()){
+        update_candidates(candidates, temp_candidate_items);
     }
 }
 

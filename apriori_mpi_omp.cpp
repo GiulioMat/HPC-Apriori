@@ -48,6 +48,8 @@ int main (){
     int local_start = 0, local_end = 0;
     string item;
 
+    cout<<"Max threads: "<<omp_get_max_threads()<<endl;
+
     int tot_lines = count_file_lines(file_name);
 
     compute_local_start_end(file_name, my_rank, comm_sz, &local_start, &local_end);
@@ -253,11 +255,10 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
             temp_candidate_items.push_back(it->first);
             ++it;
         }
-        if(it == temp_dictionary.end()){
-            if(!temp_dictionary.empty()){
-                update_candidates(candidates, temp_candidate_items);
-            }
-        }
+    }
+
+    if(!temp_dictionary.empty()){
+        update_candidates(candidates, temp_candidate_items);
     }
 }
 

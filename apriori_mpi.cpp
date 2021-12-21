@@ -10,7 +10,7 @@
 #include <sys/time.h>
 using namespace std;
 
-const float MIN_SUPPORT = 0.5;
+const float MIN_SUPPORT = 0.1;
 const float MIN_CONFIDENCE = 1.;
 
 int count_file_lines(char file_name[]);
@@ -39,7 +39,7 @@ int main (){
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
 
-    char file_name[] = "./prova.txt";
+    char file_name[] = "./order_products__prior.txt";
     vector< vector<string> > matrix;
     map<string,float> dictionary;
     map<string,float> temp_dictionary;
@@ -254,11 +254,10 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
             temp_candidate_items.push_back(it->first);
             ++it;
         }
-        if(it == temp_dictionary.end()){
-            if(!temp_dictionary.empty()){
-                update_candidates(candidates, temp_candidate_items);
-            }
-        }
+    }
+
+    if(!temp_dictionary.empty()){
+        update_candidates(candidates, temp_candidate_items);
     }
 }
 
