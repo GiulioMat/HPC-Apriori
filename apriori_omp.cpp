@@ -39,10 +39,18 @@ int main (){
     cout<<"Max threads: "<<omp_get_max_threads()<<endl;
 
     struct timeval start, end;
+    double elapsed;
+
     gettimeofday(&start, NULL);
 
     // read file into 2D vector matrix
     matrix = read_file(file_name);
+
+    gettimeofday(&end, NULL);
+    elapsed = (end.tv_sec - start.tv_sec) + 
+              ((end.tv_usec - start.tv_usec)/1000000.0);
+    cout<<"Time passed: "<<elapsed<<endl;
+
     n_rows = matrix.size();
 
     // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
@@ -91,7 +99,7 @@ int main (){
     }
 
     gettimeofday(&end, NULL);
-    double elapsed = (end.tv_sec - start.tv_sec) + 
+    elapsed = (end.tv_sec - start.tv_sec) + 
               ((end.tv_usec - start.tv_usec)/1000000.0);
     cout<<"Time passed: "<<elapsed<<endl;
 
@@ -211,12 +219,13 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
     stringstream to_combine;
     vector<string> items;
     vector<string> elements;
+    string combination;
 
     int common_items;
 
     for(int i = 0; i < temp_candidate_items.size()-1; i++){
 
-        #pragma omp parallel for private(common_items, item, to_combine, items, elements)
+        #pragma omp parallel for private(common_items, item, to_combine, items, elements, combination)
         for(int j = i+1; j < temp_candidate_items.size(); j++){
             common_items = 0;
 
@@ -224,16 +233,18 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
             while(getline (to_combine, item, ' ')) {
                 if(!(find(items.begin(), items.end(), item) != items.end())){
                     items.push_back(item);
+                    combination += " " + item;
                 }
                 else{
                     common_items++;
                 }
             }
 
-            // if the statement is true than we can create combinations as candidates
-            // else we created all correct combianations and we pass to the next itemset 
+            // if the statement is true than we can add combination as candidate
+            // else we created all correct combinations and we pass to the next itemset
             if(common_items == items.size()-2){
-                compute_combinations(0, items.size(), elements, items, candidates);
+                combination.erase(0,1); // remove first space
+                candidates.push_back(combination);
             }
             
         }
@@ -248,7 +259,6 @@ void compute_combinations(int offset, int k, vector<string> &elements, vector<st
             temp += " " + elements[i];
         }
         temp.erase(0,1); // remove first space
-        #pragma omp critical
         combinations.push_back(temp);
         return;
     }

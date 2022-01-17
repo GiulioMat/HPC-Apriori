@@ -55,22 +55,24 @@ int main (){
     cout<<"RANK("<<my_rank<<") "<<"start: "<<local_start<<" | end:"<<local_end<<endl; 
 
     struct timeval start, end;
+    double elapsed;
+
     gettimeofday(&start, NULL);
     
     // read file into 2D vector matrix
     matrix = read_file(file_name, local_start, local_end);
 
+    gettimeofday(&end, NULL);
+    elapsed = (end.tv_sec - start.tv_sec) + 
+              ((end.tv_usec - start.tv_usec)/1000000.0);
+    cout<<"Time passed: "<<elapsed<<endl;
+
     // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
     for (int i = 0; i < matrix.size(); i++){
         for (int j = 0; j < matrix[i].size(); j++){
             item = matrix[i][j];
-
-            if(dictionary.count(item)){ // if key exists
-                dictionary[item]++;
-            }
-            else{
-                dictionary.insert(pair<string,float>(item, 1));
-            }
+            
+            dictionary[item]++;
         }
     }
 
@@ -107,7 +109,7 @@ int main (){
 
     if(my_rank == 0){
         gettimeofday(&end, NULL);
-        double elapsed = (end.tv_sec - start.tv_sec) + 
+        elapsed = (end.tv_sec - start.tv_sec) + 
                 ((end.tv_usec - start.tv_usec)/1000000.0);
         cout<<"Time passed: "<<elapsed<<endl;
 
@@ -216,12 +218,7 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
 
         // if itemset is a candidate insert it into temp_dictionary to calculate support 
         if(find(candidates.begin(), candidates.end(), itemset) != candidates.end()){
-            if(temp_dictionary.count(itemset)){ // if key exists
-                temp_dictionary[itemset]++;
-            }
-            else{
-                temp_dictionary.insert(pair<string,float>(itemset, 1));
-            }
+            temp_dictionary[itemset]++;
             return;
         }
         // if itemset is not a candidate discard it
@@ -365,6 +362,7 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
     stringstream to_combine;
     vector<string> items;
     vector<string> elements;
+    string combination;
 
     int common_items;
 
@@ -373,21 +371,24 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
             common_items = 0;
             items.clear();
             to_combine.clear();
+            combination.clear();
 
             to_combine << temp_candidate_items[i] + ' ' + temp_candidate_items[j];
             while(getline (to_combine, item, ' ')) {
                 if(!(find(items.begin(), items.end(), item) != items.end())){
                     items.push_back(item);
+                    combination += " " + item;
                 }
                 else{
                     common_items++;
                 }
             }
 
-            // if the statement is true than we can create combinations as candidates
-            // else we created all correct combianations and we pass to the next itemset 
+            // if the statement is true than we can add combination as candidate
+            // else we created all correct combinations and we pass to the next itemset
             if(common_items == items.size()-2){
-                compute_combinations(0, items.size(), elements, items, candidates);
+                combination.erase(0,1); // remove first space
+                candidates.push_back(combination);
             }
             else{
                 break;
