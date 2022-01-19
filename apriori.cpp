@@ -11,7 +11,7 @@ using namespace std;
 const float MIN_SUPPORT = 0.1;
 const float MIN_CONFIDENCE = 1.;
 
-tuple<vector< vector<string> >, map<string,float> > read_file(char file_name[]);
+void read_file(char file_name[], vector< vector<string> > &matrix, map<string,float> &dictionary);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
 void split_candidates(vector<string> candidates, vector<string> &single_candidates);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
@@ -40,7 +40,7 @@ int main (){
     gettimeofday(&start, NULL);
 
     // read file into 2D vector matrix and insert 1-itemsets in dictionary as key with their frequency as value
-    tie(matrix, dictionary) = read_file(file_name);
+    read_file(file_name, matrix, dictionary);
 
     n_rows = matrix.size();
 
@@ -93,13 +93,10 @@ int main (){
 // Functions
 // ------------------------------------------------------------
 
-tuple<vector< vector<string> >, map<string,float> > read_file(char file_name[]){
+void read_file(char file_name[], vector< vector<string> > &matrix, map<string,float> &dictionary){
     ifstream myfile (file_name);
 
-    vector< vector<string> > matrix;
-    vector<string> row;  
-    map<string,float> dictionary;
-    
+    vector<string> row;    
     string line;
     stringstream ss;
     string item;
@@ -122,8 +119,6 @@ tuple<vector< vector<string> >, map<string,float> > read_file(char file_name[]){
     }
 
     myfile.close();
-
-    return make_tuple(matrix, dictionary);
 }
 
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates){
@@ -175,6 +170,8 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
 void split_candidates(vector<string> candidates, vector<string> &single_candidates){
     stringstream ss;
     string item;
+
+    single_candidates.clear();
 
     for(int i = 0; i < candidates.size(); i++){
             ss << candidates[i];

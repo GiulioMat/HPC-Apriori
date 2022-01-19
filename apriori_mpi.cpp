@@ -15,7 +15,7 @@ const float MIN_CONFIDENCE = 1.;
 
 int count_file_lines(char file_name[]);
 void compute_local_start_end(char file_name[], int my_rank, int comm_sz, int *local_start, int *local_end);
-tuple<vector< vector<string> >, map<string,float> > read_file(char file_name[], int local_start, int local_end);
+void read_file(char file_name[], int local_start, int local_end, vector< vector<string> > &matrix, map<string,float> &dictionary);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
 void split_candidates(vector<string> candidates, vector<string> &single_candidates);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
@@ -59,7 +59,7 @@ int main (){
     cout<<"RANK("<<my_rank<<") "<<"start: "<<local_start<<" | end:"<<local_end<<endl;
     
     // read file into 2D vector matrix and insert 1-itemsets in dictionary as key with their frequency as value
-    tie(matrix, dictionary) = read_file(file_name, local_start, local_end);
+    read_file(file_name, local_start, local_end, matrix, dictionary);
 
     tot_lines = count_file_lines(file_name);
 
@@ -163,14 +163,11 @@ void compute_local_start_end(char file_name[], int my_rank, int comm_sz, int *lo
     }
 }
 
-tuple<vector< vector<string> >, map<string,float> > read_file(char file_name[], int local_start, int local_end){
+void read_file(char file_name[], int local_start, int local_end, vector< vector<string> > &matrix, map<string,float> &dictionary){
     int line_index = 0;
     ifstream myfile (file_name);
 
-    vector< vector<string> > matrix;
     vector<string> row;  
-    map<string,float> dictionary;
-    
     string line;
     stringstream ss;
     string item;
@@ -198,8 +195,6 @@ tuple<vector< vector<string> >, map<string,float> > read_file(char file_name[], 
     }
 
     myfile.close();
-
-    return make_tuple(matrix, dictionary);
 }
 
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates){
@@ -330,6 +325,8 @@ void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &cand
 void split_candidates(vector<string> candidates, vector<string> &single_candidates){
     stringstream ss;
     string item;
+
+    single_candidates.clear();
 
     for(int i = 0; i < candidates.size(); i++){
         ss << candidates[i];
