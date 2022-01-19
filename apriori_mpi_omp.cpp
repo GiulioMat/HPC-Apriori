@@ -355,7 +355,7 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
 
     for(int i = 0; i < temp_candidate_items.size()-1; i++){
 
-        #pragma omp parallel for private(common_items, item, to_combine, items, elements, combination)
+        #pragma omp parallel for
         for(int j = i+1; j < temp_candidate_items.size(); j++){
             string item;
             stringstream to_combine;
