@@ -283,12 +283,7 @@ void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &cand
             ss << itemsets;
             count = 0;
             while(getline (ss, item, '|')) {
-                if(temp_dictionary.count(item)){ // if key exists
-                    temp_dictionary[item] += supports[count];
-                }
-                else{
-                    temp_dictionary.insert(pair<string,float>(item, supports[count]));
-                }
+                temp_dictionary[item] += supports[count];
                 count++;
             }
             supports.clear();
