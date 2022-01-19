@@ -13,7 +13,7 @@ using namespace std;
 const float MIN_SUPPORT = 0.1;
 const float MIN_CONFIDENCE = 1.;
 
-vector< vector<string> > read_file(char file_name[]);
+tuple<vector< vector<string> >, map<string,float> > read_file(char file_name[]);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
 void split_candidates(vector<string> candidates, vector<string> &single_candidates);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
@@ -43,24 +43,10 @@ int main (){
 
     gettimeofday(&start, NULL);
 
-    // read file into 2D vector matrix
-    matrix = read_file(file_name);
-
-    gettimeofday(&end, NULL);
-    elapsed = (end.tv_sec - start.tv_sec) + 
-              ((end.tv_usec - start.tv_usec)/1000000.0);
-    cout<<"Time passed: "<<elapsed<<endl;
+    // read file into 2D vector matrix and insert 1-itemsets in dictionary as key with their frequency as value
+    tie(matrix, dictionary) = read_file(file_name);
 
     n_rows = matrix.size();
-
-    // read matrix and insert 1-itemsets in dictionary as key with their frequency as value
-    for (int i = 0; i < matrix.size(); i++){
-        for(int j = 0; j < matrix[i].size(); ++j){
-            item = matrix[i][j];
-
-            dictionary[item]++;
-        }
-    }
 
     // divide frequency by number of rows to calculate support
     #pragma omp parallel for
@@ -118,11 +104,12 @@ int main (){
 // Functions
 // ------------------------------------------------------------
 
-vector< vector<string> > read_file(char file_name[]){
+tuple<vector< vector<string> >, map<string,float> > read_file(char file_name[]){
     ifstream myfile (file_name);
 
     vector< vector<string> > matrix;
     vector<string> row;  
+    map<string,float> dictionary;
     
     string line;
     stringstream ss;
@@ -134,6 +121,8 @@ vector< vector<string> > read_file(char file_name[]){
         while(getline (ss, item, ' ')) {
             item.erase(remove(item.begin(), item.end(), '\r'), item.end());
             row.push_back(item);
+            // insert item into dictionary and increment its value
+            dictionary[item]++;
         }
 
         sort(row.begin(), row.end());
@@ -145,7 +134,7 @@ vector< vector<string> > read_file(char file_name[]){
 
     myfile.close();
 
-    return matrix;
+    return make_tuple(matrix, dictionary);
 }
 
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates){
@@ -201,17 +190,16 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
 void split_candidates(vector<string> candidates, vector<string> &single_candidates){
     stringstream ss;
     string item;
-    
-    #pragma omp parallel for private(ss, item)
+
     for(int i = 0; i < candidates.size(); i++){
-        ss << candidates[i];
-        while(getline (ss, item, ' ')) {
-            if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
-                #pragma omp critical
-                single_candidates.push_back(item);
+            ss << candidates[i];
+            while(getline (ss, item, ' ')) {
+                if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
+                    single_candidates.push_back(item);
+                }
             }
+            ss.clear();
         }
-    }
 }
 
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){
@@ -244,6 +232,7 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
             // else we created all correct combinations and we pass to the next itemset
             if(common_items == items.size()-2){
                 combination.erase(0,1); // remove first space
+                #pragma omp critical
                 candidates.push_back(combination);
             }
             
