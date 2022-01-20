@@ -18,10 +18,10 @@ int count_file_lines(char file_name[]);
 void compute_local_start_end(char file_name[], int my_rank, int comm_sz, int *local_start, int *local_end);
 void read_file(char file_name[], int local_start, int local_end, vector< vector<string> > &matrix, map<string,float> &dictionary);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
-void split_candidates(vector<string> candidates, vector<string> &single_candidates);
-void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
-void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, int my_rank, int comm_sz);
-void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items);
+void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, vector<string> &single_candidates);
+void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, int my_rank, int comm_sz, vector<string> &single_candidates);
+void broadcast_candidates(vector<string> &candidates, int my_rank);
+void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates);
 void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
 void generate_association_rules(map<string,float> dictionary, float min_confidence);
 string create_consequent(string antecedent, vector<string> items);
@@ -74,14 +74,12 @@ int main (){
     }
 
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
-    prune_itemsets_MPI(dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz);
+    prune_itemsets_MPI(dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz, single_candidates);
 
     // insert in dictionary all k-itemset
     int n = 2; // starting from 2-itemset
     while(!candidates.empty()){
         temp_dictionary.clear();
-        // insert single items candidates
-        split_candidates(candidates, single_candidates);
         // read matrix and insert n-itemsets in temp_dictionary as key with their frequency as value
         #pragma omp parallel for
         for (int i = 0; i < matrix.size(); i++){
@@ -95,7 +93,7 @@ int main (){
             itr->second = itr->second/float(tot_lines);
         }
         // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
-        prune_itemsets_MPI(temp_dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz);
+        prune_itemsets_MPI(temp_dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz, single_candidates);
         // append new n-itemsets to main dictionary
         if(my_rank == 0){
             dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
@@ -236,9 +234,11 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
     }
 }
 
-void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support){
+void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, vector<string> &single_candidates){
     vector<string> temp_candidate_items;
     candidates.clear(); // empty candidates to then update it
+    single_candidates.clear();
+
     for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){ // like a while
         if (it->second < MIN_SUPPORT){
             temp_dictionary.erase(it++);
@@ -250,13 +250,13 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
     }
 
     if(!temp_dictionary.empty()){
-        update_candidates(candidates, temp_candidate_items);
+        update_candidates(candidates, temp_candidate_items, single_candidates);
     }
 }
 
 // https://stackoverflow.com/questions/21378302/how-to-send-stdstring-in-mpi/50171749
 // https://stackoverflow.com/questions/29068755/cannot-send-stdvector-using-mpi-send-and-mpi-recv
-void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, int my_rank, int comm_sz){
+void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, int my_rank, int comm_sz, vector<string> &single_candidates){
     string itemsets;
     string item;
     int count;
@@ -297,11 +297,21 @@ void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &cand
             itemsets.clear();
             ss.clear();
         }
-        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
+        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT, single_candidates);
     }
 
     // broadcast updated candidate itemsets
+    broadcast_candidates(candidates, my_rank);
+
+    broadcast_candidates(single_candidates, my_rank);
+}
+
+void broadcast_candidates(vector<string> &candidates, int my_rank){
     char* buf;
+    string itemsets;
+    string item;
+    int count;
+    stringstream ss;
 
     if(my_rank == 0){
         for(int i=0; i<candidates.size(); i++) {
@@ -334,24 +344,7 @@ void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &cand
     }
 }
 
-void split_candidates(vector<string> candidates, vector<string> &single_candidates){
-    stringstream ss;
-    string item;
-
-    single_candidates.clear();
-
-    for(int i = 0; i < candidates.size(); i++){
-            ss << candidates[i];
-            while(getline (ss, item, ' ')) {
-                if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
-                    single_candidates.push_back(item);
-                }
-            }
-            ss.clear();
-        }
-}
-
-void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){
+void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates){
 
     for(int i = 0; i < temp_candidate_items.size()-1; i++){
 
@@ -380,8 +373,19 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
             // else we created all correct combinations and we pass to the next itemset
             if(common_items == items.size()-2){
                 combination.erase(0,1); // remove first space
+
                 #pragma omp critical
-                candidates.push_back(combination);
+                {   
+                    candidates.push_back(combination);
+                    
+                    // insert single items candidates
+                    for(int i=0; i<items.size(); i++) {
+                        if(!(find(single_candidates.begin(), single_candidates.end(), items[i]) != single_candidates.end())){
+                            single_candidates.push_back(items[i]);
+                        }
+                    }
+                    
+                }
             }
 
         }

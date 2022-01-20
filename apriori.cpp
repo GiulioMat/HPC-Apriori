@@ -13,9 +13,8 @@ const float MIN_CONFIDENCE = 1.;
 
 void read_file(char file_name[], vector< vector<string> > &matrix, map<string,float> &dictionary);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
-void split_candidates(vector<string> candidates, vector<string> &single_candidates);
-void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support);
-void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items);
+void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, vector<string> &single_candidates);
+void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates);
 void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
 void generate_association_rules(map<string,float> dictionary, float min_confidence);
 string create_consequent(string antecedent, vector<string> items);
@@ -25,7 +24,7 @@ string create_consequent(string antecedent, vector<string> items);
 // ------------------------------------------------------------
 
 int main (){
-    char file_name[] = "./order_products__prior.txt";
+    char file_name[] = "./prova.txt";
     vector< vector<string> > matrix;
     map<string,float> dictionary;
     map<string,float> temp_dictionary;
@@ -50,14 +49,12 @@ int main (){
     }
 
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
-    prune_itemsets(dictionary, candidates, MIN_SUPPORT);
+    prune_itemsets(dictionary, candidates, MIN_SUPPORT, single_candidates);
 
     // insert in dictionary all k-itemset
     int n = 2; // starting from 2-itemset
     while(!candidates.empty()){
         temp_dictionary.clear();
-        // insert single items candidates
-        split_candidates(candidates, single_candidates);
         // read matrix and insert n-itemsets in temp_dictionary as key with their frequency as value
         for (int i = 0; i < matrix.size(); i++){
             find_itemsets(matrix[i], candidates, temp_dictionary, n, -1, "", 0, single_candidates);
@@ -67,7 +64,7 @@ int main (){
             i->second = i->second/float(n_rows);
         }
         // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
-        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT);
+        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT, single_candidates);
         // append new n-itemsets to main dictionary
         dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
         n++;
@@ -149,9 +146,11 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
     }
 }
 
-void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support){
+void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, vector<string> &single_candidates){
     vector<string> temp_candidate_items;
     candidates.clear(); // empty candidates to then update it
+    single_candidates.clear();
+
     for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){ // like a while
         if (it->second < MIN_SUPPORT){
             temp_dictionary.erase(it++);
@@ -163,28 +162,11 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
     }
 
     if(!temp_dictionary.empty()){
-        update_candidates(candidates, temp_candidate_items);
+        update_candidates(candidates, temp_candidate_items, single_candidates);
     }
 }
 
-void split_candidates(vector<string> candidates, vector<string> &single_candidates){
-    stringstream ss;
-    string item;
-
-    single_candidates.clear();
-
-    for(int i = 0; i < candidates.size(); i++){
-            ss << candidates[i];
-            while(getline (ss, item, ' ')) {
-                if(!(find(single_candidates.begin(), single_candidates.end(), item) != single_candidates.end())){
-                    single_candidates.push_back(item);
-                }
-            }
-            ss.clear();
-        }
-}
-
-void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items){
+void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates){
     string item;
     stringstream to_combine;
     vector<string> items;
@@ -216,6 +198,13 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
             if(common_items == items.size()-2){
                 combination.erase(0,1); // remove first space
                 candidates.push_back(combination);
+
+                // insert single items candidates
+                for(int i=0; i<items.size(); i++) {
+                    if(!(find(single_candidates.begin(), single_candidates.end(), items[i]) != single_candidates.end())){
+                        single_candidates.push_back(items[i]);
+                    }
+                }
             }
             else{
                 break;
