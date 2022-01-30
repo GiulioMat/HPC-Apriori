@@ -11,7 +11,6 @@
 #include <sys/time.h>
 using namespace std;
 
-const float MIN_SUPPORT = 0.1;
 const float MIN_CONFIDENCE = 1.;
 
 int count_file_lines(char file_name[]);
@@ -30,7 +29,7 @@ string create_consequent(string antecedent, vector<string> items);
 // Main
 // ------------------------------------------------------------
 
-int main (){
+int main(int argc, char* argv[]){
     MPI_Init(NULL, NULL);
 
     int comm_sz;
@@ -39,7 +38,8 @@ int main (){
     int my_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-    char file_name[] = "./order_products__prior.txt";
+    char* file_name = argv[1];
+    float min_support = atof(argv[2]);
     vector< vector<string> > matrix;
     map<string,float> dictionary;
     map<string,float> temp_dictionary;
@@ -74,7 +74,7 @@ int main (){
     }
 
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
-    prune_itemsets_MPI(dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz, single_candidates);
+    prune_itemsets_MPI(dictionary, candidates, min_support, my_rank, comm_sz, single_candidates);
 
     // insert in dictionary all k-itemset
     int n = 2; // starting from 2-itemset
@@ -93,7 +93,7 @@ int main (){
             itr->second = itr->second/float(tot_lines);
         }
         // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
-        prune_itemsets_MPI(temp_dictionary, candidates, MIN_SUPPORT, my_rank, comm_sz, single_candidates);
+        prune_itemsets_MPI(temp_dictionary, candidates, min_support, my_rank, comm_sz, single_candidates);
         // append new n-itemsets to main dictionary
         if(my_rank == 0){
             dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
@@ -240,7 +240,7 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
     single_candidates.clear();
 
     for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){ // like a while
-        if (it->second < MIN_SUPPORT){
+        if (it->second < min_support){
             temp_dictionary.erase(it++);
         }
         else{
@@ -297,7 +297,7 @@ void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &cand
             itemsets.clear();
             ss.clear();
         }
-        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT, single_candidates);
+        prune_itemsets(temp_dictionary, candidates, min_support, single_candidates);
     }
 
     // broadcast updated candidate itemsets
@@ -345,18 +345,21 @@ void broadcast_candidates(vector<string> &candidates, int my_rank){
 }
 
 void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates){
+    string item;
+    stringstream to_combine;
+    vector<string> items;
+    vector<string> elements;
+    string combination;
 
+    int common_items;
+
+    #pragma omp parallel for private(item, to_combine, items, elements, combination, common_items)
     for(int i = 0; i < temp_candidate_items.size()-1; i++){
-
-        #pragma omp parallel for
         for(int j = i+1; j < temp_candidate_items.size(); j++){
-            string item;
-            stringstream to_combine;
-            vector<string> items;
-            vector<string> elements;
-            string combination;
-
-            int common_items = 0;
+            common_items = 0;
+            items.clear();
+            to_combine.clear();
+            combination.clear();
 
             to_combine << temp_candidate_items[i] + ' ' + temp_candidate_items[j];
             while(getline (to_combine, item, ' ')) {
@@ -386,6 +389,9 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
                     }
                     
                 }
+            }
+            else{
+                break;
             }
 
         }

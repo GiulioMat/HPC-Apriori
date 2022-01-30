@@ -8,7 +8,6 @@
 #include <sys/time.h>
 using namespace std;
 
-const float MIN_SUPPORT = 0.1;
 const float MIN_CONFIDENCE = 1.;
 
 void read_file(char file_name[], vector< vector<string> > &matrix, map<string,float> &dictionary);
@@ -23,8 +22,9 @@ string create_consequent(string antecedent, vector<string> items);
 // Main
 // ------------------------------------------------------------
 
-int main (){
-    char file_name[] = "./prova.txt";
+int main(int argc, char* argv[]){
+    char* file_name = argv[1];
+    float min_support = atof(argv[2]);
     vector< vector<string> > matrix;
     map<string,float> dictionary;
     map<string,float> temp_dictionary;
@@ -49,7 +49,7 @@ int main (){
     }
 
     // prune from dictionary 1-itemsets with support < min_support and insert items in candidates vector
-    prune_itemsets(dictionary, candidates, MIN_SUPPORT, single_candidates);
+    prune_itemsets(dictionary, candidates, min_support, single_candidates);
 
     // insert in dictionary all k-itemset
     int n = 2; // starting from 2-itemset
@@ -64,7 +64,7 @@ int main (){
             i->second = i->second/float(n_rows);
         }
         // prune from temp_dictionary n-itemsets with support < min_support and insert items in candidates vector
-        prune_itemsets(temp_dictionary, candidates, MIN_SUPPORT, single_candidates);
+        prune_itemsets(temp_dictionary, candidates, min_support, single_candidates);
         // append new n-itemsets to main dictionary
         dictionary.insert(temp_dictionary.begin(), temp_dictionary.end());
         n++;
@@ -152,7 +152,7 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
     single_candidates.clear();
 
     for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){ // like a while
-        if (it->second < MIN_SUPPORT){
+        if (it->second < min_support){
             temp_dictionary.erase(it++);
         }
         else{
