@@ -15,7 +15,7 @@ const float MIN_CONFIDENCE = 1.;
 void read_file(char file_name[], vector< vector<string> > &matrix, map<string,float> &dictionary);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, vector<string> &single_candidates);
-void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates);
+void update_candidates(vector<string> &candidates, vector<string> freq_itemsets, vector<string> &single_candidates);
 void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
 void generate_association_rules(map<string,float> dictionary, float min_confidence);
 string create_consequent(string antecedent, vector<string> items);
@@ -160,7 +160,7 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
 }
 
 void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, vector<string> &single_candidates){
-    vector<string> temp_candidate_items;
+    vector<string> freq_itemsets;
     candidates.clear(); // empty candidates to then update it
     single_candidates.clear();
 
@@ -170,17 +170,17 @@ void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidat
             temp_dictionary.erase(it++);
         }
         else{
-            temp_candidate_items.push_back(it->first);
+            freq_itemsets.push_back(it->first);
             ++it;
         }
     }
 
-    if(!temp_dictionary.empty()){
-        update_candidates(candidates, temp_candidate_items, single_candidates);
+    if(!freq_itemsets.empty()){
+        update_candidates(candidates, freq_itemsets, single_candidates);
     }
 }
 
-void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates){
+void update_candidates(vector<string> &candidates, vector<string> freq_itemsets, vector<string> &single_candidates){
     string item;
     stringstream to_combine;
     vector<string> items;
@@ -190,14 +190,14 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
     int common_items;
 
     #pragma omp parallel for private(item, to_combine, items, elements, combination, common_items)
-    for(int i = 0; i < temp_candidate_items.size()-1; i++){
-        for(int j = i+1; j < temp_candidate_items.size(); j++){
+    for(int i = 0; i < freq_itemsets.size()-1; i++){
+        for(int j = i+1; j < freq_itemsets.size(); j++){
             common_items = 0;
             items.clear();
             to_combine.clear();
             combination.clear();
 
-            to_combine << temp_candidate_items[i] + ' ' + temp_candidate_items[j];
+            to_combine << freq_itemsets[i] + ' ' + freq_itemsets[j];
             while(getline (to_combine, item, ' ')) {
                 if(!(find(items.begin(), items.end(), item) != items.end())){
                     items.push_back(item);

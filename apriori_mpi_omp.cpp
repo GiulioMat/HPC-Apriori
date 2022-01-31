@@ -17,10 +17,9 @@ int count_file_lines(char file_name[]);
 void compute_local_start_end(char file_name[], int my_rank, int comm_sz, int *local_start, int *local_end);
 void read_file(char file_name[], int local_start, int local_end, vector< vector<string> > &matrix, map<string,float> &dictionary);
 void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,float> &temp_dictionary, int k, int item_idx, string itemset, int current, vector<string> single_candidates);
-void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, vector<string> &single_candidates);
 void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, int my_rank, int comm_sz, vector<string> &single_candidates);
-void broadcast_candidates(vector<string> &candidates, int my_rank);
-void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates);
+void broadcast_freq_itemsets(vector<string> &freq_itemsets, int my_rank);
+void update_candidates(vector<string> &candidates, vector<string> freq_itemsets, vector<string> &single_candidates);
 void compute_combinations(int offset, int k, vector<string> &elements, vector<string> &items, vector<string> &combinations);
 void generate_association_rules(map<string,float> dictionary, float min_confidence);
 string create_consequent(string antecedent, vector<string> items);
@@ -234,26 +233,6 @@ void find_itemsets(vector<string> matrix, vector<string> candidates, map<string,
     }
 }
 
-void prune_itemsets(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, vector<string> &single_candidates){
-    vector<string> temp_candidate_items;
-    candidates.clear(); // empty candidates to then update it
-    single_candidates.clear();
-
-    for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){ // like a while
-        if (it->second < min_support){
-            temp_dictionary.erase(it++);
-        }
-        else{
-            temp_candidate_items.push_back(it->first);
-            ++it;
-        }
-    }
-
-    if(!temp_dictionary.empty()){
-        update_candidates(candidates, temp_candidate_items, single_candidates);
-    }
-}
-
 // https://stackoverflow.com/questions/21378302/how-to-send-stdstring-in-mpi/50171749
 // https://stackoverflow.com/questions/29068755/cannot-send-stdvector-using-mpi-send-and-mpi-recv
 void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &candidates, float min_support, int my_rank, int comm_sz, vector<string> &single_candidates){
@@ -262,6 +241,8 @@ void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &cand
     int count;
     vector<float> supports;
     stringstream ss;
+
+    vector<string> freq_itemsets;
 
     // collect itemsets and prune them
     if(my_rank != 0){
@@ -297,16 +278,30 @@ void prune_itemsets_MPI(map<string,float> &temp_dictionary, vector<string> &cand
             itemsets.clear();
             ss.clear();
         }
-        prune_itemsets(temp_dictionary, candidates, min_support, single_candidates);
+        
+        // prune itemsets to obtain just frequent ones
+        for (map<string, float>::iterator it = temp_dictionary.begin(); it != temp_dictionary.end(); ){ // like a while
+            if (it->second < min_support){
+                temp_dictionary.erase(it++);
+            }
+            else{
+                freq_itemsets.push_back(it->first);
+                ++it;
+            }
+        }
     }
 
-    // broadcast updated candidate itemsets
-    broadcast_candidates(candidates, my_rank);
+    broadcast_freq_itemsets(freq_itemsets, my_rank);
 
-    broadcast_candidates(single_candidates, my_rank);
+    candidates.clear(); // empty candidates to then update it
+    single_candidates.clear();
+
+    if(!freq_itemsets.empty()){
+        update_candidates(candidates, freq_itemsets, single_candidates);
+    }
 }
 
-void broadcast_candidates(vector<string> &candidates, int my_rank){
+void broadcast_freq_itemsets(vector<string> &freq_itemsets, int my_rank){
     char* buf;
     string itemsets;
     string item;
@@ -314,15 +309,13 @@ void broadcast_candidates(vector<string> &candidates, int my_rank){
     stringstream ss;
 
     if(my_rank == 0){
-        for(int i=0; i<candidates.size(); i++) {
-            itemsets.append('|' + candidates[i]);
+        for(int i=0; i<freq_itemsets.size(); i++) {
+            itemsets.append('|' + freq_itemsets[i]);
         }
         itemsets.erase(0,1); // remove first char
         count = itemsets.length()+1;
     }
-    else{
-        candidates.clear();
-    }
+
     MPI_Bcast(&count, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     if(my_rank == 0){
@@ -339,12 +332,12 @@ void broadcast_candidates(vector<string> &candidates, int my_rank){
         itemsets = buf;
         ss << itemsets;
         while(getline (ss, item, '|')) {
-            candidates.push_back(item);
+            freq_itemsets.push_back(item);
         }
     }
 }
 
-void update_candidates(vector<string> &candidates, vector<string> temp_candidate_items, vector<string> &single_candidates){
+void update_candidates(vector<string> &candidates, vector<string> freq_itemsets, vector<string> &single_candidates){
     string item;
     stringstream to_combine;
     vector<string> items;
@@ -354,14 +347,14 @@ void update_candidates(vector<string> &candidates, vector<string> temp_candidate
     int common_items;
 
     #pragma omp parallel for private(item, to_combine, items, elements, combination, common_items)
-    for(int i = 0; i < temp_candidate_items.size()-1; i++){
-        for(int j = i+1; j < temp_candidate_items.size(); j++){
+    for(int i = 0; i < freq_itemsets.size()-1; i++){
+        for(int j = i+1; j < freq_itemsets.size(); j++){
             common_items = 0;
             items.clear();
             to_combine.clear();
             combination.clear();
 
-            to_combine << temp_candidate_items[i] + ' ' + temp_candidate_items[j];
+            to_combine << freq_itemsets[i] + ' ' + freq_itemsets[j];
             while(getline (to_combine, item, ' ')) {
                 if(!(find(items.begin(), items.end(), item) != items.end())){
                     items.push_back(item);
