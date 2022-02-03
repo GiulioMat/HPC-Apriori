@@ -12,7 +12,7 @@ The project objective is to present a parallel implementation of the Apriori alg
 
 
 ### Dataset
-The dataset on which the algorithm was tested is the Instacart Market Basket Analysis dataset that can be found on Kaggle.
+The dataset on which the algorithm was tested is the [Instacart Market Basket Analysis](https://www.kaggle.com/c/instacart-market-basket-analysis/overview) dataset that can be found on Kaggle.
 
 ### Usage
 In order to execute the algorithm on a computer cluster it is necessary to run a PBS script in which specify both the dataset to analyse and the minimum support to consider.
