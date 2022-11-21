@@ -1,5 +1,7 @@
 # Parallel Apriori Algorithm with MPI and OpenMP
 
+![](/report/mpi_efficiency_plot.jpg)
+
 ### Project Objective
 The project objective is to present a parallel implementation of the Apriori algorithm using both MPI and OpenMP in order to efficiently extract frequent itemsets from a large dataset containing transactions made by clients. The algorithm has been implemented in different versions and the performaces have been analysed.
 

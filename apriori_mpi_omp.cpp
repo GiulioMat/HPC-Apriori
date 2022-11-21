@@ -56,8 +56,6 @@ int main(int argc, char* argv[]){
     gettimeofday(&start, NULL);
 
     compute_local_start_end(file_name, my_rank, comm_sz, &local_start, &local_end);
-
-    cout<<"RANK("<<my_rank<<") "<<"start: "<<local_start<<" | end:"<<local_end<<endl;
     
     // read file into 2D vector matrix and insert 1-itemsets in dictionary as key with their frequency as value
     read_file(file_name, local_start, local_end, matrix, dictionary);
